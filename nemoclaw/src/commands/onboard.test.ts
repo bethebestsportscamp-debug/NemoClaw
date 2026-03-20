@@ -192,6 +192,7 @@ describe("cliOnboard", () => {
     await cliOnboard({
       endpoint: "nim-local",
       model: "nvidia/nemotron-3-nano-30b-a3b",
+      apiKey: "nvapi-local-nim",
       logger,
       pluginConfig,
     });
@@ -261,6 +262,7 @@ describe("cliOnboard", () => {
     await cliOnboard({
       endpoint: "nim-local",
       model: "nvidia/nemotron-3-nano-30b-a3b",
+      apiKey: "nvapi-local-nim",
       logger,
       pluginConfig,
     });

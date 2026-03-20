@@ -31,7 +31,9 @@ credentials.prompt = async (message) => {
   messages.push(message);
   return "1";
 };
-credentials.ensureApiKey = async () => {};
+credentials.ensureApiKey = async () => {
+  process.env.NVIDIA_API_KEY = "nvapi-local-nim";
+};
 runner.runCapture = (command) => {
   if (command.includes("command -v ollama")) return "/usr/bin/ollama";
   if (command.includes("localhost:11434/api/tags")) return JSON.stringify({ models: [{ name: "nemotron-3-nano:30b" }] });
@@ -66,6 +68,7 @@ const { setupNim } = require(${onboardPath});
       env: {
         ...process.env,
         HOME: tmpDir,
+        NVIDIA_API_KEY: "nvapi-local-nim",
       },
     });
 
@@ -158,6 +161,7 @@ const { setupNim } = require(${onboardPath});
       env: {
         ...process.env,
         HOME: tmpDir,
+        NVIDIA_API_KEY: "nvapi-local-nim",
       },
     });
 

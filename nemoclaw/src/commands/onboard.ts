@@ -131,6 +131,34 @@ function defaultCredentialForEndpoint(endpointType: EndpointType): string {
   }
 }
 
+async function resolveLocalNimApiKey(
+  opts: OnboardOptions,
+  nonInteractive: boolean,
+  logger: PluginLogger,
+): Promise<string | null> {
+  const envKey = process.env.NVIDIA_API_KEY?.trim();
+  if (opts.apiKey?.trim()) {
+    return opts.apiKey.trim();
+  }
+  if (envKey) {
+    logger.info(`Detected NVIDIA_API_KEY in environment (${maskApiKey(envKey)})`);
+    if (nonInteractive) {
+      return envKey;
+    }
+    const useEnv = await promptConfirm("Use this NVIDIA API key for local NIM downloads?", true);
+    if (useEnv) {
+      return envKey;
+    }
+  }
+  if (nonInteractive) {
+    return null;
+  }
+  logger.info("Local NIM still needs an NVIDIA API key to download model manifests and weights.");
+  logger.info("Get an API key from: https://build.nvidia.com/settings/api-keys");
+  const input = await promptInput("Enter your NVIDIA API key for local NIM");
+  return input.trim() || null;
+}
+
 function detectOllama(): { installed: boolean; running: boolean } {
   const installed = testCommand("command -v ollama >/dev/null 2>&1");
   const running = testCommand("curl -sf http://localhost:11434/api/tags >/dev/null 2>&1");
@@ -411,9 +439,11 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
 
   const credentialEnv = resolveCredentialEnv(endpointType);
   const requiresApiKey = endpointRequiresApiKey(endpointType);
+  const requiresLocalNimApiKey = endpointType === "nim-local";
 
   // Step 3: Credential
   let apiKey = defaultCredentialForEndpoint(endpointType);
+  let localNimApiKey: string | null = null;
   if (requiresApiKey) {
     if (opts.apiKey) {
       apiKey = opts.apiKey;
@@ -427,6 +457,12 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
         logger.info("Get an API key from: https://build.nvidia.com/settings/api-keys");
         apiKey = await promptInput("Enter your NVIDIA API key");
       }
+    }
+  } else if (requiresLocalNimApiKey) {
+    localNimApiKey = await resolveLocalNimApiKey(opts, nonInteractive, logger);
+    if (!localNimApiKey) {
+      logger.error("NVIDIA_API_KEY is required to start a local NIM container.");
+      return;
     }
   } else {
     logger.info(
@@ -538,7 +574,7 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   }
   logger.info(`  Model:       ${model}`);
   logger.info(
-    `  API Key:     ${requiresApiKey ? maskApiKey(apiKey) : "not required (local provider)"}`,
+    `  API Key:     ${requiresApiKey ? maskApiKey(apiKey) : requiresLocalNimApiKey && localNimApiKey ? `${maskApiKey(localNimApiKey)} (for local NIM downloads)` : "not required (local provider)"}`,
   );
   logger.info(`  Credential:  $${credentialEnv}`);
   logger.info(`  Profile:     ${profile}`);
@@ -558,6 +594,9 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   logger.info("Applying configuration...");
 
   if (endpointType === "nim-local") {
+    process.env.NVIDIA_API_KEY = localNimApiKey ?? process.env.NVIDIA_API_KEY ?? "";
+    process.env.NGC_API_KEY = process.env.NGC_API_KEY?.trim() || process.env.NVIDIA_API_KEY;
+
     const runtime = createNimRuntime();
     const gpu = detectGpu(runtime);
     if (!gpu || !gpu.nimCapable) {

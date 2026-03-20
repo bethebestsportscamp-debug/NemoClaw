@@ -219,6 +219,29 @@ function sleep(seconds) {
   require("child_process").spawnSync("sleep", [String(seconds)]);
 }
 
+async function ensureLocalNimApiKey() {
+  let key = (process.env.NVIDIA_API_KEY || "").trim() || (getCredential("NVIDIA_API_KEY") || "").trim();
+  if (!key) {
+    if (isNonInteractive()) {
+      console.error("  NVIDIA_API_KEY is required for local NIM in non-interactive mode.");
+      console.error("  Set it via: NVIDIA_API_KEY=nvapi-... nemoclaw onboard --non-interactive");
+      process.exit(1);
+    }
+    console.log("  Local NIM still needs an NVIDIA API key to download model manifests and weights.");
+    await ensureApiKey();
+    key = (process.env.NVIDIA_API_KEY || "").trim() || (getCredential("NVIDIA_API_KEY") || "").trim();
+  }
+  if (!key) {
+    console.error("  NVIDIA_API_KEY is required to start a local NIM container.");
+    process.exit(1);
+  }
+  process.env.NVIDIA_API_KEY = key;
+  if (!process.env.NGC_API_KEY || !process.env.NGC_API_KEY.trim()) {
+    process.env.NGC_API_KEY = key;
+  }
+  return key;
+}
+
 function waitForSandboxReady(sandboxName, attempts = 10, delaySeconds = 2) {
   for (let i = 0; i < attempts; i += 1) {
     const exists = runCapture(`openshell sandbox get "${sandboxName}" 2>/dev/null`, { ignoreError: true });
@@ -619,6 +642,7 @@ async function setupNim(sandboxName, gpu) {
     }
 
     if (selected.key === "nim") {
+      await ensureLocalNimApiKey();
       const assessments = nim.assessNimModels(gpu, gpu.freeDiskGB ?? null);
       const models = assessments.filter((assessment) => assessment.status !== "unsupported");
       if (models.length === 0) {
