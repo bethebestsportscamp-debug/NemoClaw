@@ -123,6 +123,9 @@ describe("commands/migration-state", () => {
   beforeEach(() => {
     store.clear();
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    vi.stubEnv("HOME", "/home/user");
+    vi.stubEnv("USERPROFILE", "");
   });
 
   // -------------------------------------------------------------------------
@@ -652,6 +655,7 @@ describe("commands/migration-state", () => {
 
     it("restores external config when hasExternalConfig", () => {
       const logger = makeLogger();
+      vi.stubEnv("OPENCLAW_CONFIG_PATH", "/etc/openclaw.json");
       const manifest: SnapshotManifest = {
         version: 2,
         createdAt: "2026-03-01T00:00:00.000Z",
