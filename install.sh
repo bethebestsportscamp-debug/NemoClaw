@@ -6,8 +6,20 @@
 
 set -euo pipefail
 
-NEMOCLAW_VERSION="0.1.0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_NEMOCLAW_VERSION="0.1.0"
 TOTAL_STEPS=3
+
+resolve_installer_version() {
+  local package_json="${SCRIPT_DIR}/package.json"
+  local version=""
+  if [[ -f "$package_json" ]]; then
+    version="$(sed -nE 's/^[[:space:]]*"version":[[:space:]]*"([^"]+)".*/\1/p' "$package_json" | head -1)"
+  fi
+  printf "%s" "${version:-$DEFAULT_NEMOCLAW_VERSION}"
+}
+
+NEMOCLAW_VERSION="$(resolve_installer_version)"
 
 # ---------------------------------------------------------------------------
 # Color / style — disabled when NO_COLOR is set or stdout is not a TTY.
@@ -16,10 +28,8 @@ TOTAL_STEPS=3
 if [[ -z "${NO_COLOR:-}" && -t 1 ]]; then
   if [[ "${COLORTERM:-}" == "truecolor" || "${COLORTERM:-}" == "24bit" ]]; then
     C_GREEN=$'\033[38;2;118;185;0m'   # #76B900 — exact NVIDIA green
-    C_CLAW=$'\033[38;2;255;77;77m'    # #ff4d4d — OpenClaw red
   else
     C_GREEN=$'\033[38;5;148m'          # closest 256-color on dark backgrounds
-    C_CLAW=$'\033[38;5;210m'           # closest 256-color for #ff4d4d
   fi
   C_BOLD=$'\033[1m'
   C_DIM=$'\033[2m'
@@ -28,7 +38,7 @@ if [[ -z "${NO_COLOR:-}" && -t 1 ]]; then
   C_CYAN=$'\033[1;36m'
   C_RESET=$'\033[0m'
 else
-  C_GREEN='' C_CLAW='' C_BOLD='' C_DIM='' C_RED='' C_YELLOW='' C_CYAN='' C_RESET=''
+  C_GREEN='' C_BOLD='' C_DIM='' C_RED='' C_YELLOW='' C_CYAN='' C_RESET=''
 fi
 
 # ---------------------------------------------------------------------------
@@ -38,6 +48,29 @@ info()  { printf "${C_CYAN}[INFO]${C_RESET}  %s\n" "$*"; }
 warn()  { printf "${C_YELLOW}[WARN]${C_RESET}  %s\n" "$*"; }
 error() { printf "${C_RED}[ERROR]${C_RESET} %s\n" "$*" >&2; exit 1; }
 ok()    { printf "  ${C_GREEN}✓${C_RESET}  %s\n" "$*"; }
+
+resolve_default_sandbox_name() {
+  local registry_file="${HOME}/.nemoclaw/sandboxes.json"
+  local sandbox_name="${NEMOCLAW_SANDBOX_NAME:-}"
+
+  if [[ -z "$sandbox_name" && -f "$registry_file" ]] && command_exists node; then
+    sandbox_name="$(
+      node -e '
+        const fs = require("fs");
+        const file = process.argv[1];
+        try {
+          const data = JSON.parse(fs.readFileSync(file, "utf8"));
+          const sandboxes = data.sandboxes || {};
+          const preferred = data.defaultSandbox;
+          const name = (preferred && sandboxes[preferred] && preferred) || Object.keys(sandboxes)[0] || "";
+          process.stdout.write(name);
+        } catch {}
+      ' "$registry_file" 2>/dev/null || true
+    )"
+  fi
+
+  printf "%s" "${sandbox_name:-my-assistant}"
+}
 
 # step N "Description" — numbered section header
 step() {
@@ -50,12 +83,12 @@ step() {
 print_banner() {
   printf "\n"
   # ANSI Shadow ASCII art — hand-crafted, no figlet dependency
-  printf "  ${C_GREEN}${C_BOLD} ███╗   ██╗███████╗███╗   ███╗ ██████╗  ${C_RESET}${C_CLAW}${C_BOLD}██████╗██╗      █████╗ ██╗    ██╗${C_RESET}\n"
-  printf "  ${C_GREEN}${C_BOLD} ████╗  ██║██╔════╝████╗ ████║██╔═══██╗${C_RESET}${C_CLAW}${C_BOLD}██╔════╝██║     ██╔══██╗██║    ██║${C_RESET}\n"
-  printf "  ${C_GREEN}${C_BOLD} ██╔██╗ ██║█████╗  ██╔████╔██║██║   ██║${C_RESET}${C_CLAW}${C_BOLD}██║     ██║     ███████║██║ █╗ ██║${C_RESET}\n"
-  printf "  ${C_GREEN}${C_BOLD} ██║╚██╗██║██╔══╝  ██║╚██╔╝██║██║   ██║${C_RESET}${C_CLAW}${C_BOLD}██║     ██║     ██╔══██║██║███╗██║${C_RESET}\n"
-  printf "  ${C_GREEN}${C_BOLD} ██║ ╚████║███████╗██║ ╚═╝ ██║╚██████╔╝${C_RESET}${C_CLAW}${C_BOLD}╚██████╗███████╗██║  ██║╚███╔███╔╝${C_RESET}\n"
-  printf "  ${C_GREEN}${C_BOLD} ╚═╝  ╚═══╝╚══════╝╚═╝     ╚═╝ ╚═════╝  ${C_RESET}${C_CLAW}${C_BOLD}╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝${C_RESET}\n"
+  printf "  ${C_GREEN}${C_BOLD} ███╗   ██╗███████╗███╗   ███╗ ██████╗  ██████╗██╗      █████╗ ██╗    ██╗${C_RESET}\n"
+  printf "  ${C_GREEN}${C_BOLD} ████╗  ██║██╔════╝████╗ ████║██╔═══██╗██╔════╝██║     ██╔══██╗██║    ██║${C_RESET}\n"
+  printf "  ${C_GREEN}${C_BOLD} ██╔██╗ ██║█████╗  ██╔████╔██║██║   ██║██║     ██║     ███████║██║ █╗ ██║${C_RESET}\n"
+  printf "  ${C_GREEN}${C_BOLD} ██║╚██╗██║██╔══╝  ██║╚██╔╝██║██║   ██║██║     ██║     ██╔══██║██║███╗██║${C_RESET}\n"
+  printf "  ${C_GREEN}${C_BOLD} ██║ ╚████║███████╗██║ ╚═╝ ██║╚██████╔╝╚██████╗███████╗██║  ██║╚███╔███╔╝${C_RESET}\n"
+  printf "  ${C_GREEN}${C_BOLD} ╚═╝  ╚═══╝╚══════╝╚═╝     ╚═╝ ╚═════╝  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝${C_RESET}\n"
   printf "\n"
   printf "  ${C_DIM}Deploy more secure, always-on AI assistants with a single command.  v%s${C_RESET}\n" "$NEMOCLAW_VERSION"
   printf "\n"
@@ -63,12 +96,16 @@ print_banner() {
 
 print_done() {
   local elapsed=$(( SECONDS - _INSTALL_START ))
+  local sandbox_name
+  sandbox_name="$(resolve_default_sandbox_name)"
   info "=== Installation complete ==="
   printf "\n"
-  printf "  ${C_GREEN}${C_BOLD}Nemo${C_RESET}${C_CLAW}${C_BOLD}Claw${C_RESET}  ${C_DIM}(%ss)${C_RESET}\n" "$elapsed"
+  printf "  ${C_GREEN}${C_BOLD}NemoClaw${C_RESET}  ${C_DIM}(%ss)${C_RESET}\n" "$elapsed"
   printf "\n"
-  printf "  Your secured AI agent stack is live.\n"
+  printf "  ${C_GREEN}Your OpenClaw Sandbox is live.${C_RESET}\n"
   printf "  ${C_DIM}Sandbox in, break things, and tell us what you find.${C_RESET}\n"
+  printf "  %s$%s nemoclaw %s connect\n" "$C_GREEN" "$C_RESET" "$sandbox_name"
+  printf "  %ssandbox@%s$%s openclaw tui\n" "$C_GREEN" "$sandbox_name" "$C_RESET"
   printf "\n"
   printf "  ${C_BOLD}GitHub${C_RESET}  ${C_DIM}https://github.com/nvidia/nemoclaw${C_RESET}\n"
   printf "  ${C_BOLD}Docs${C_RESET}    ${C_DIM}https://docs.nvidia.com/nemoclaw/latest/${C_RESET}\n"
@@ -83,11 +120,22 @@ usage() {
   printf "    curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash -s -- [options]\n\n"
   printf "  ${C_DIM}Options:${C_RESET}\n"
   printf "    --non-interactive    Skip prompts (uses env vars / defaults)\n"
-  printf "    --version            Print installer version and exit\n"
+  printf "    --version, -v        Print installer version and exit\n"
   printf "    --help               Show this help message and exit\n\n"
   printf "  ${C_DIM}Environment:${C_RESET}\n"
   printf "    NVIDIA_API_KEY                API key (skips credential prompt)\n"
   printf "    NEMOCLAW_NON_INTERACTIVE=1    Same as --non-interactive\n"
+  printf "    NEMOCLAW_SANDBOX_NAME         Sandbox name to create/use\n"
+  printf "    NEMOCLAW_RECREATE_SANDBOX=1   Recreate an existing sandbox\n"
+  printf "    NEMOCLAW_PROVIDER             cloud | ollama | nim | vllm\n"
+  printf "    NEMOCLAW_MODEL                Inference model to configure\n"
+  printf "    NEMOCLAW_POLICY_MODE          suggested | custom | skip\n"
+  printf "    NEMOCLAW_POLICY_PRESETS       Comma-separated policy presets\n"
+  printf "    NEMOCLAW_EXPERIMENTAL=1       Show experimental/local options\n"
+  printf "    CHAT_UI_URL                   Chat UI URL to open after setup\n"
+  printf "    DISCORD_BOT_TOKEN             Auto-enable Discord policy support\n"
+  printf "    SLACK_BOT_TOKEN               Auto-enable Slack policy support\n"
+  printf "    TELEGRAM_BOT_TOKEN            Auto-enable Telegram policy support\n"
   printf "\n"
 }
 
@@ -504,7 +552,7 @@ main() {
   for arg in "$@"; do
     case "$arg" in
       --non-interactive) NON_INTERACTIVE=1 ;;
-      --version) printf "nemoclaw-installer v%s\n" "$NEMOCLAW_VERSION"; exit 0 ;;
+      --version|-v) printf "nemoclaw-installer v%s\n" "$NEMOCLAW_VERSION"; exit 0 ;;
       --help|-h) usage; exit 0 ;;
       *) usage; error "Unknown option: $arg" ;;
     esac
