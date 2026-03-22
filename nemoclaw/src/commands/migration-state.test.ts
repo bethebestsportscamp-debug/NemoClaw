@@ -674,5 +674,146 @@ describe("commands/migration-state", () => {
       expect(result).toBe(true);
       expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("external config"));
     });
+
+    it("rejects restore when stateDir does not match OPENCLAW_STATE_DIR", () => {
+      const logger = makeLogger();
+      vi.stubEnv("OPENCLAW_STATE_DIR", "/home/user/.openclaw-expected");
+      const manifest: SnapshotManifest = {
+        version: 2,
+        createdAt: "2026-03-01T00:00:00.000Z",
+        homeDir: "/home/user",
+        stateDir: "/home/user/.openclaw",
+        configPath: null,
+        hasExternalConfig: false,
+        externalRoots: [],
+        warnings: [],
+      };
+      addFile("/snapshots/snap1/snapshot.json", JSON.stringify(manifest));
+      addDir("/snapshots/snap1/openclaw");
+
+      const result = restoreSnapshotToHost("/snapshots/snap1", logger);
+      expect(result).toBe(false);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("does not match OPENCLAW_STATE_DIR"),
+      );
+    });
+
+    it("rejects restore when stateDir is outside the trusted root", () => {
+      const logger = makeLogger();
+      const manifest: SnapshotManifest = {
+        version: 2,
+        createdAt: "2026-03-01T00:00:00.000Z",
+        homeDir: "/home/user",
+        stateDir: "/etc/openclaw",
+        configPath: null,
+        hasExternalConfig: false,
+        externalRoots: [],
+        warnings: [],
+      };
+      addFile("/snapshots/snap1/snapshot.json", JSON.stringify(manifest));
+      addDir("/snapshots/snap1/openclaw");
+
+      const result = restoreSnapshotToHost("/snapshots/snap1", logger);
+      expect(result).toBe(false);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("stateDir is outside the trusted host root"),
+      );
+    });
+
+    it("rejects restore when external config path does not match OPENCLAW_CONFIG_PATH", () => {
+      const logger = makeLogger();
+      vi.stubEnv("OPENCLAW_CONFIG_PATH", "/etc/expected-openclaw.json");
+      const manifest: SnapshotManifest = {
+        version: 2,
+        createdAt: "2026-03-01T00:00:00.000Z",
+        homeDir: "/home/user",
+        stateDir: "/home/user/.openclaw",
+        configPath: "/etc/openclaw.json",
+        hasExternalConfig: true,
+        externalRoots: [],
+        warnings: [],
+      };
+      addFile("/snapshots/snap1/snapshot.json", JSON.stringify(manifest));
+      addDir("/snapshots/snap1/openclaw");
+
+      const result = restoreSnapshotToHost("/snapshots/snap1", logger);
+      expect(result).toBe(false);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("does not match OPENCLAW_CONFIG_PATH"),
+      );
+    });
+
+    it("rejects restore when external config path is outside the trusted root", () => {
+      const logger = makeLogger();
+      const manifest: SnapshotManifest = {
+        version: 2,
+        createdAt: "2026-03-01T00:00:00.000Z",
+        homeDir: "/home/user",
+        stateDir: "/home/user/.openclaw",
+        configPath: "/etc/openclaw.json",
+        hasExternalConfig: true,
+        externalRoots: [],
+        warnings: [],
+      };
+      addFile("/snapshots/snap1/snapshot.json", JSON.stringify(manifest));
+      addDir("/snapshots/snap1/openclaw");
+
+      const result = restoreSnapshotToHost("/snapshots/snap1", logger);
+      expect(result).toBe(false);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("configPath is outside the trusted host root"),
+      );
+    });
+
+    it("rejects restore when external config path is not a string", () => {
+      const logger = makeLogger();
+      addFile(
+        "/snapshots/snap1/snapshot.json",
+        JSON.stringify({
+          version: 2,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          homeDir: "/home/user",
+          stateDir: "/home/user/.openclaw",
+          configPath: 123,
+          hasExternalConfig: true,
+          externalRoots: [],
+          warnings: [],
+        }),
+      );
+      addDir("/snapshots/snap1/openclaw");
+
+      const result = restoreSnapshotToHost("/snapshots/snap1", logger);
+      expect(result).toBe(false);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("configPath is not a string"),
+      );
+    });
+
+    it("returns false when restoring the external config copy throws", async () => {
+      const logger = makeLogger();
+      vi.stubEnv("OPENCLAW_CONFIG_PATH", "/etc/openclaw.json");
+      const manifest: SnapshotManifest = {
+        version: 2,
+        createdAt: "2026-03-01T00:00:00.000Z",
+        homeDir: "/home/user",
+        stateDir: "/home/user/.openclaw",
+        configPath: "/etc/openclaw.json",
+        hasExternalConfig: true,
+        externalRoots: [],
+        warnings: [],
+      };
+      addFile("/snapshots/snap1/snapshot.json", JSON.stringify(manifest));
+      addDir("/snapshots/snap1/openclaw");
+      addFile("/snapshots/snap1/config/openclaw.json", JSON.stringify({ external: true }));
+
+      const fs = await import("node:fs");
+      vi.mocked(fs.copyFileSync).mockImplementationOnce(() => {
+        throw new Error("disk full");
+      });
+
+      const result = restoreSnapshotToHost("/snapshots/snap1", logger);
+      expect(result).toBe(false);
+      expect(logger.error).toHaveBeenCalledWith("Restoration failed: disk full");
+    });
   });
 });

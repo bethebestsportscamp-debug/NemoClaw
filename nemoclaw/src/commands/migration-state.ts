@@ -675,16 +675,14 @@ export function restoreSnapshotToHost(snapshotDir: string, logger: PluginLogger)
   if (typeof manifest.homeDir !== "string" || !isWithinRoot(manifest.homeDir, trustedRoot)) {
     logger.error(
       `Snapshot manifest homeDir is outside the trusted host root. ` +
-        `Refusing to restore. homeDir=${String(manifest.homeDir)}, trustedRoot=${trustedRoot}`,
+        `Refusing to restore. homeDir=${manifest.homeDir}, trustedRoot=${trustedRoot}`,
     );
     return false;
   }
 
   // Validate stateDir type and containment
   if (typeof manifest.stateDir !== "string") {
-    logger.error(
-      `Snapshot manifest stateDir is not a string. Refusing to restore.`,
-    );
+    logger.error(`Snapshot manifest stateDir is not a string. Refusing to restore.`);
     return false;
   }
 
@@ -710,9 +708,7 @@ export function restoreSnapshotToHost(snapshotDir: string, logger: PluginLogger)
   if (manifest.hasExternalConfig && manifest.configPath !== null) {
     // Validate configPath type
     if (typeof manifest.configPath !== "string") {
-      logger.error(
-        `Snapshot manifest configPath is not a string. Refusing to restore.`,
-      );
+      logger.error(`Snapshot manifest configPath is not a string. Refusing to restore.`);
       return false;
     }
 
