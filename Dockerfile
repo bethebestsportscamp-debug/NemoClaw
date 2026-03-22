@@ -33,12 +33,22 @@ RUN mkdir -p /sandbox/.openclaw-data/agents/main/agent \
         /sandbox/.openclaw-data/workspace \
         /sandbox/.openclaw-data/skills \
         /sandbox/.openclaw-data/hooks \
+        /sandbox/.openclaw-data/identity \
+        /sandbox/.openclaw-data/devices \
+        /sandbox/.openclaw-data/canvas \
+        /sandbox/.openclaw-data/cron \
     && mkdir -p /sandbox/.openclaw \
     && ln -s /sandbox/.openclaw-data/agents /sandbox/.openclaw/agents \
     && ln -s /sandbox/.openclaw-data/extensions /sandbox/.openclaw/extensions \
     && ln -s /sandbox/.openclaw-data/workspace /sandbox/.openclaw/workspace \
     && ln -s /sandbox/.openclaw-data/skills /sandbox/.openclaw/skills \
     && ln -s /sandbox/.openclaw-data/hooks /sandbox/.openclaw/hooks \
+    && ln -s /sandbox/.openclaw-data/identity /sandbox/.openclaw/identity \
+    && ln -s /sandbox/.openclaw-data/devices /sandbox/.openclaw/devices \
+    && ln -s /sandbox/.openclaw-data/canvas /sandbox/.openclaw/canvas \
+    && ln -s /sandbox/.openclaw-data/cron /sandbox/.openclaw/cron \
+    && touch /sandbox/.openclaw-data/update-check.json \
+    && ln -s /sandbox/.openclaw-data/update-check.json /sandbox/.openclaw/update-check.json \
     && chown -R sandbox:sandbox /sandbox/.openclaw /sandbox/.openclaw-data
 
 # Install OpenClaw CLI
@@ -73,6 +83,12 @@ ARG CHAT_UI_URL=http://127.0.0.1:18789
 # Pass --build-arg NEMOCLAW_BUILD_ID=$(date +%s) to bust the cache.
 ARG NEMOCLAW_BUILD_ID=default
 
+# SECURITY: Promote build-args to env vars so the Python script reads them
+# via os.environ, never via string interpolation into Python source code.
+# Direct ARG interpolation into python3 -c is a code injection vector (C-2).
+ENV NEMOCLAW_MODEL=${NEMOCLAW_MODEL} \
+    CHAT_UI_URL=${CHAT_UI_URL}
+
 WORKDIR /sandbox
 USER sandbox
 
@@ -84,20 +100,29 @@ USER sandbox
 RUN python3 -c "\
 import json, os, secrets; \
 from urllib.parse import urlparse; \
-model = '${NEMOCLAW_MODEL}'; \
-chat_ui_url = '${CHAT_UI_URL}'; \
+model = os.environ['NEMOCLAW_MODEL']; \
+chat_ui_url = os.environ['CHAT_UI_URL']; \
 parsed = urlparse(chat_ui_url); \
 chat_origin = f'{parsed.scheme}://{parsed.netloc}' if parsed.scheme and parsed.netloc else 'http://127.0.0.1:18789'; \
 origins = ['http://127.0.0.1:18789']; \
 origins = list(dict.fromkeys(origins + [chat_origin])); \
 config = { \
-    'agents': {'defaults': {'model': {'primary': model}}}, \
-    'models': {'mode': 'merge', 'providers': {'nvidia': { \
-        'baseUrl': 'https://inference.local/v1', \
-        'apiKey': 'openshell-managed', \
-        'api': 'openai-completions', \
-        'models': [{'id': model.split('/')[-1], 'name': model, 'reasoning': False, 'input': ['text'], 'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}, 'contextWindow': 131072, 'maxTokens': 4096}] \
-    }}}, \
+    'agents': {'defaults': {'model': {'primary': f'inference/{model}'}}}, \
+    'models': {'mode': 'merge', 'providers': { \
+        'nvidia': { \
+            'baseUrl': 'https://inference.local/v1', \
+            'apiKey': 'openshell-managed', \
+            'api': 'openai-completions', \
+            'models': [{'id': model.split('/')[-1], 'name': model, 'reasoning': False, 'input': ['text'], 'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}, 'contextWindow': 131072, 'maxTokens': 4096}] \
+        }, \
+        'inference': { \
+            'baseUrl': 'https://inference.local/v1', \
+            'apiKey': 'unused', \
+            'api': 'openai-completions', \
+            'models': [{'id': model, 'name': model, 'reasoning': False, 'input': ['text'], 'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}, 'contextWindow': 131072, 'maxTokens': 4096}] \
+        } \
+    }}, \
+    'channels': {'defaults': {'configWrites': False}}, \
     'gateway': { \
         'mode': 'local', \
         'controlUi': { \
