@@ -287,9 +287,8 @@ remove_openshell_resources() {
 remove_nemoclaw_cli() {
   if command -v npm > /dev/null 2>&1; then
     npm unlink -g nemoclaw > /dev/null 2>&1 || true
-    if spin "Removing nemoclaw npm package..." \
-        npm uninstall -g --loglevel=error nemoclaw; then
-      : # spin already printed ✓
+    if npm uninstall -g --loglevel=error nemoclaw > /dev/null 2>&1; then
+      info "Removed global nemoclaw npm package"
     else
       warn "Global nemoclaw npm package not found or already removed"
     fi
@@ -300,6 +299,12 @@ remove_nemoclaw_cli() {
   if [ -L "${NEMOCLAW_SHIM_DIR}/nemoclaw" ] || [ -f "${NEMOCLAW_SHIM_DIR}/nemoclaw" ]; then
     remove_path "${NEMOCLAW_SHIM_DIR}/nemoclaw"
   fi
+}
+
+remove_docker_resources() {
+  remove_related_docker_containers
+  remove_related_docker_images
+  remove_related_docker_volumes
 }
 
 remove_nemoclaw_state() {
@@ -520,12 +525,10 @@ main() {
   remove_openshell_resources
 
   step 3 "NemoClaw CLI"
-  remove_nemoclaw_cli
+  spin "Removing NemoClaw CLI..." remove_nemoclaw_cli
 
   step 4 "Docker resources"
-  remove_related_docker_containers
-  remove_related_docker_images
-  remove_related_docker_volumes
+  spin "Removing Docker resources..." remove_docker_resources
 
   step 5 "Ollama models"
   remove_optional_ollama_models

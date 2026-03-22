@@ -97,6 +97,7 @@ function streamSandboxCreate(command) {
   let pending = "";
   let lastPrintedLine = "";
   let sawProgress = false;
+  let settled = false;
 
   function shouldShowLine(line) {
     return (
@@ -136,7 +137,20 @@ function streamSandboxCreate(command) {
   child.stderr.on("data", onChunk);
 
   return new Promise((resolve) => {
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      if (pending) flushLine(pending);
+      const detail = error && error.code
+        ? `spawn failed: ${error.message} (${error.code})`
+        : `spawn failed: ${error.message}`;
+      lines.push(detail);
+      resolve({ status: 1, output: lines.join("\n"), sawProgress: false });
+    });
+
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
       if (pending) flushLine(pending);
       resolve({ status: code ?? 1, output: lines.join("\n"), sawProgress });
     });
@@ -237,7 +251,6 @@ function isOpenshellInstalled() {
 }
 
 function installOpenshell() {
-  console.log("  Installing openshell CLI...");
   const result = spawnSync("bash", [path.join(SCRIPTS, "install-openshell.sh")], {
     cwd: ROOT,
     env: process.env,
@@ -332,7 +345,7 @@ async function preflight() {
 
   // OpenShell CLI
   if (!isOpenshellInstalled()) {
-    console.log("  openshell CLI not found. Attempting to install...");
+    console.log("  openshell CLI not found. Installing...");
     if (!installOpenshell()) {
       console.error("  Failed to install openshell CLI.");
       console.error("  Install manually: https://github.com/NVIDIA/OpenShell/releases");
@@ -1009,6 +1022,7 @@ function printDashboard(sandboxName, model, provider) {
   console.log(`  Model        ${model} (${providerLabel})`);
   console.log(`  NIM          ${nimLabel}`);
   console.log(`  ${"─".repeat(50)}`);
+  console.log(`  Next:`);
   console.log(`  Run:         nemoclaw ${sandboxName} connect`);
   console.log(`  Status:      nemoclaw ${sandboxName} status`);
   console.log(`  Logs:        nemoclaw ${sandboxName} logs --follow`);
